@@ -5,44 +5,42 @@
 
 namespace torch { namespace jit {
 
-std::vector<at::Tensor> runNode(const Node *n) {
-  auto new_g = std::make_shared<Graph>();
-  auto new_block = new_g->block();
+at::ArrayRef<torch::jit::Value *> runNode(Node *n) {
+  auto graph = std::make_shared<Graph>();
+  auto block = graph->block();
+  
   std::unordered_map<Value*, Value*> local_map;
   auto env = [&](Value * v) {
     auto it = local_map.find(v);
     if(it != local_map.end())
       return it->second;
-    barf("Constant Folding encountered a use of a value not in scope");
+    barf("Encountered a use of a value not in scope");
   };
 
   for(auto input : n->inputs()) {
-    local_map[input] = new_block->addInput()->copyMetadata(input)->setStage(input->stage());
-    new_g->setStage(std::max(new_g->stage(), input->stage()));
+    local_map[input] = block->addInput()->copyMetadata(input)->setStage(input->stage());
+    graph->setStage(std::max(graph->stage(), input->stage()));
   }
 
-  auto new_node = new_block->appendNode(new_g->createClone(n, env, /*non-recursive */ false));
+  auto new_node = block->appendNode(graph->createClone(n, env, /*non-recursive */ false));
   new_node->setStage(n->stage());
-  new_g->setStage(std::max(graph->stage(), n->stage()));
+  graph->setStage(std::max(graph->stage(), n->stage()));
 
-  for(size_t i = 0; i < node->outputs().size(); ++i) {
-    auto oo = node->outputs()[i];
+  for(size_t i = 0; i < n->outputs().size(); ++i) {
+    auto oo = n->outputs()[i];
     auto no = new_node->outputs()[i];
     local_map[oo] = no;
     no->copyMetadata(oo);
     no->setStage(oo->stage());
   }
   for(auto output : n->outputs()) {
-    new_block->registerOutput(env(output));
+    block->registerOutput(env(output));
   }
-  std::vector<at::Tensor> outputs;
-  runOneStage(InterpreterState(InterpreterState(Code(graph)), new_block->inputs(), outputs));
-  return outputs;
-}
-
-void runOneStage(InterpreterState & interp, const std::vector<at::Tensor> & inputs, std::vector<at::Tensor> & outputs) {
-  outputs = inputs;
-  interp.runOneStage(outputs);
+  auto values = fmap(block->inputs(), [&](Value* v) {
+    return v->node()->t(attr::value);
+  });
+  InterpreterState(Code(graph)).runOneStage(values);
+  return block->outputs();
 }
 
 void propagateNode(Node *n) {
@@ -54,14 +52,17 @@ void propagateNode(Node *n) {
 
 void ConstantFolding(Node* n, bool recurse) {
   auto & graph = *n->owningGraph();
-  auto all_constant_inputs = std::all_of(n->inputs().begin(), node->inputs().end(),
-                [&](Value *v) {
-                  v->node()->kind() == prim::Constant
-                });
-  if (all_constant_inputs && node->kind() != prim::Print) {
+  bool propagate = std::all_of(n->inputs.begin(), n->inputs.end(), [&](Value* v) {
+    return v->node()->kind() == prim::Constant;
+  }) && n->kind() != prim::Print;
+  if (propagate) {
     propagateNode(n);
-    for (Block * block : node->blocks())
-      ConstantFolding(block, recurse, memo);
+  }
+  if (recurse) {
+    for (Block * block : n->blocks())
+      ConstantFolding(block, recurse);
+  }
+  if (propagate) {
     // n->destroy();
   }
 }
@@ -75,7 +76,7 @@ void ConstantFolding(Block* block, bool recurse) {
 
 void ConstantFolding(std::shared_ptr<Graph>& graph) {
   ConstantFolding(graph->block(), true);
-  // EliminateDeadCode(graph);
+  EliminateDeadCode(graph);
 }
 
 }}
