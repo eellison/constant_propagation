@@ -1063,47 +1063,48 @@ class TestJit(JitTestCase):
         self.assertEqual(out_ref, out_test)
         self.assertExpected(canonical(addmm.graph))
 
-    def test_decompose_addmm_test(self):
+    def test_constant_prop_simple(self):
         @torch.jit.script
-        def addmm(mat, mat1, mat2, alpha, beta):
-            a = mat.addmm(mat1, mat2)
-            b = mat.addmm(mat1, mat2, alpha=1.0, beta=1.0)
-            c = mat.addmm(mat1, mat2, alpha=4.20, beta=2.0)
-            d = mat.addmm(mat1, mat2, alpha=alpha, beta=beta)
+        def constant_prop(input_tensor):
+            a = 2 * 3
+            b = a + 2
+            return b + input_tensor
 
-            return a + b + c + d
-
-        mat = torch.randn(2, 2)
-        mat1 = torch.randn(2, 4)
-        mat2 = torch.randn(4, 2)
-        alpha = torch.FloatTensor([123.0])
-        beta = torch.FloatTensor([321.0])
-
-        out_ref = addmm(mat, mat1, mat2, alpha, beta)
-        self.run_pass('decompose_addmm_test', addmm.graph)
-        out_test = addmm(mat, mat1, mat2, alpha, beta)
+        x = torch.tensor(2)
+        out_ref = constant_prop(x)
+        self.run_pass('constant_propagation', constant_prop.graph)
+        out_test = constant_prop(torch.tensor(2))
         self.assertEqual(out_ref, out_test)
-        # self.assertExpected(canonical(addmm.graph))
+        self.assertExpected(canonical(constant_prop.graph))
 
-
-    def test_constant_propagation(self):
+    def test_constant_prop_print(self):
         @torch.jit.script
-        def constant_propagation():
-            c = 1 + 3
+        def constant_prop(input_tensor):
+            a = 2 * 3
+            print(a)
+            b = a + 2
+            return b + input_tensor
+
+        self.run_pass('constant_propagation', constant_prop.graph)
+        self.assertExpected(canonical(constant_prop.graph))
+
+
+    def test_constant_prop_block(self):
+        @torch.jit.script
+        def constant_prop(input_tensor):
             d = 2 + 1
-            f = d + 2
-            g = 3 + 5
-            h = g + f
-            e = c + h
+            if input_tensor < 2:
+                c = input_tensor - d
+            else:
+                c = input_tensor + d
+            return c
 
-            return e
-
-        out_ref = constant_propagation()
-        print(constant_propagation.graph)
-        self.run_pass('constant_propagation', constant_propagation.graph)
-        print(constant_propagation.graph)
-        out_test = constant_propagation()
-        # self.assertEqual(out_ref, out_test)
+        x = torch.tensor(2)
+        out_ref = constant_prop(x)
+        self.run_pass('constant_propagation', constant_prop.graph)
+        out_test = constant_prop(torch.tensor(2))
+        self.assertEqual(out_ref, out_test)
+        self.assertExpected(canonical(constant_prop.graph))
 
     def test_index_put(self):
         ten = torch.zeros(3, 3)
@@ -2613,44 +2614,6 @@ def func(t):
             f = io.BytesIO()
             torch.onnx._export(m, (x, seq_lens), f, verbose=False)
 
-    def test_one():
-        def end(a):
-            b = a + 4
-            c = 3 + 2 # input consists of all constants,
-                      # find future usages and replace wiith computation
-            d = c + b
-            return d
-
-        # # becomes
-        # def end(a):
-        #     b = a + 4
-        #     d = 5 + b
-        #     return d
-
-        # could be
-        # def end(a):
-        #   return a + 4 + 5
-        #   -> return a + 9`
-
-        # def beginning(a):
-        #     b = 3 + 2
-        #     c = b + 4
-        #     return a + c
-        #
-        # def beginning(a):
-        #     c = 5 + 4
-        #     return a + c
-        #
-        # def beginning(a):
-        #     return a + 9
-
-
-        def middle(a):
-            a = a + 4
-            b = 3 + 2
-            c = 4 + 7
-            return a + c
-
     def test_tuples(self):
         @torch.jit.script
         def foo(i):
@@ -3367,18 +3330,6 @@ def func(t):
 
         graph = torch.jit._script_graph(fn)
         self.run_pass('loop_unrolling', graph)
-        self.assertExpectedGraph(graph)
-        self.checkScript(fn, (torch.tensor(10),))
-
-    def test_loop_unrolling_add(self):
-        def fn(x):
-            y = 0
-            for i in range(x):
-                y += i
-            return y
-
-        graph = torch.jit._script_graph(fn)
-        self.run_pass('loop_unrolling_test', graph)
         self.assertExpectedGraph(graph)
         self.checkScript(fn, (torch.tensor(10),))
 

@@ -345,7 +345,6 @@ private:
     // and when shape information is not statically known.
     EliminateDeadCode(graph);
     CheckInplace(graph);
-    // ConstantPropagation(graph);
     EliminateCommonSubexpression(graph);
 
     if (!graphMustSupportVariables) {
@@ -354,6 +353,7 @@ private:
 
       // They also may assume that concrete sizes/strides are availiable
       UnrollLoops(graph);
+      ConstantPropagation(graph);
 
       //TODO: create peephole optimizations that are safe to run
       // when we are using variables, and when we do not know sizes.
