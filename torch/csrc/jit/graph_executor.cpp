@@ -17,7 +17,7 @@
 #include "torch/csrc/jit/passes/remove_expands.h"
 #include "torch/csrc/jit/passes/decompose_addmm.h"
 #include "torch/csrc/jit/passes/loop_unrolling.h"
-#include "torch/csrc/jit/passes/constant_folding.h"
+#include "torch/csrc/jit/passes/constant_propagation.h"
 
 
 #include "torch/csrc/autograd/edge.h"
@@ -345,7 +345,7 @@ private:
     // and when shape information is not statically known.
     EliminateDeadCode(graph);
     CheckInplace(graph);
-    // ConstantFolding(graph);
+    // ConstantPropagation(graph);
     EliminateCommonSubexpression(graph);
 
     if (!graphMustSupportVariables) {

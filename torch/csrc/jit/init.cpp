@@ -17,12 +17,14 @@
 #include "torch/csrc/jit/passes/onnx/fixup_onnx_loop.h"
 #include "torch/csrc/jit/passes/shape_analysis.h"
 #include "torch/csrc/jit/passes/decompose_addmm.h"
+#include "torch/csrc/jit/passes/constant_propagation.h"
 #include "torch/csrc/jit/passes/loop_unrolling.h"
 #include "torch/csrc/jit/graph_executor.h"
 #include "torch/csrc/jit/script/init.h"
 #include "torch/csrc/jit/script/python_tree_views.h"
 #include "torch/csrc/jit/python_interpreter.h"
-
+#include <iostream>
+#include <fstream>
 
 namespace torch  { namespace jit {
 
@@ -80,6 +82,16 @@ void initJITBindings(PyObject *module) {
    })
    .def("_jit_pass_erase_number_types", EraseNumberTypes)
    .def("_jit_pass_loop_unrolling", UnrollLoops)
+   .def("_jit_pass_constant_propagation", [](std::shared_ptr<Graph>& g){
+    //  ofstream myfile;
+    //  myfile.open ("example.txt");
+    //  myfile << "Writing this to a file.\n";
+    //  myfile.close();
+     std::cerr << "Hi elias \n";
+     std::cout << "Hi elias\n";
+     return ConstantPropagation(g);
+   })
+   .def("_jit_pass_loop_unrolling_test", UnrollLoops)
    .def("_jit_run_cpp_tests", [] {
      // We have to release the GIL inside this method, because if we happen to
      // initialize the autograd engine in these tests, the newly spawned worker threads will
@@ -96,7 +108,12 @@ void initJITBindings(PyObject *module) {
    })
    .def("_jit_pass_onnx_block", BlockToONNX)
    .def("_jit_pass_fixup_onnx_loops", FixupONNXLoops)
-   .def("_jit_pass_decompose_addmm", DecomposeAddmm);
+   .def("_jit_pass_decompose_addmm", DecomposeAddmm)
+   .def("_jit_pass_decompose_addmm_test",  [](std::shared_ptr<Graph>& g){
+     std::cerr << "Hi elias\n";
+     std::cout << "Hi elias\n";
+     return DecomposeAddmm(g);
+   });
 
   py::class_<ArgumentSpec>(m, "ArgumentSpec")
       .def("__repr__", [](ArgumentSpec& self) {
