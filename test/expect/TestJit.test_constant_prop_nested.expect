@@ -1,0 +1,14 @@
+graph(%a : Dynamic) {
+  %1 : Long() = prim::Constant[value={2}]()
+  %2 : Dynamic = aten::lt(%a, %1)
+  %c : Dynamic = prim::If(%2)
+    block0() {
+      %4 : Long() = prim::Constant[value={5}]()
+      -> (%4)
+    }
+    block1() {
+      %5 : Long() = prim::Constant[value={1}]()
+      -> (%5)
+    }
+  return (%c);
+}

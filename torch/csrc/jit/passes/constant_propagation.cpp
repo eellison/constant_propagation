@@ -5,9 +5,21 @@
 
 namespace torch { namespace jit {
 
+std::unordered_set<Symbol> skip_list = {
+  //FIXME If & Loop require special casing because they cannot be run as a
+  //single node.
+  prim::If,
+  prim::Loop,
+  //FIXME Same problem as in DCE - cpp & python PythonOp and CppOp should be
+  //FIXME treated as having side effects but ONNX depends on them being removed
+  prim::Print,
+ };
+
 std::vector<at::Tensor> runNode(Node *n) {
   auto graph = std::make_shared<Graph>();
   auto block = graph->block();
+  //very similar to Block::cloneFrom, but here we are cloning just the node,
+  //and not recursively
   std::unordered_map<Value*, Value*> local_map;
   auto env = [&](Value * v) {
     auto it = local_map.find(v);
@@ -36,8 +48,10 @@ std::vector<at::Tensor> runNode(Node *n) {
     return v->node()->t(attr::value);
   });
   InterpreterState(Code(graph)).runOneStage(values);
+  //outputs are in values now
   return values;
 }
+
 
 void propagateNode(Node *n) {
   auto outputs = runNode(n);
@@ -45,19 +59,17 @@ void propagateNode(Node *n) {
   for(size_t i = 0; i < outputs.size(); ++i) {
     auto new_node = graph->createConstant(outputs[i])->insertBefore(n);
     n->outputs()[i]->replaceAllUsesWith(new_node->output());
-    //dce elimination will remove n
+    //let dce elimination remove n
   }
 }
 
 void ConstantPropagation(Node* n, bool recurse) {
-  bool constant_inputs = (n->inputs().size() > 0) && 
+  bool constant_inputs = (n->inputs().size() > 0) &&
     std::all_of(n->inputs().begin(), n->inputs().end(), [&](Value* v) {
       return v->node()->kind() == prim::Constant;
     });
-  // FIXME: PythonOp and CppOp should be treated as having side effects as well!
-  //        Unfortunately ONNX depends on them getting removed in this pass, so it's not
-  //        a simple change. Should be changed in
-  if (constant_inputs && n->kind() != prim::Print) {
+  bool supported_node = skip_list.count(n->kind()) == 0;
+  if (constant_inputs && supported_node) {
     propagateNode(n);
   }
   if (recurse) {
