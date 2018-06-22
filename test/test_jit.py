@@ -2863,7 +2863,6 @@ def func(t):
         def use(b):
             return foo(b - 1.0, a) + 1.0
 
-        print(str(foo.graph))
         # test we propagated shapes through the function
         self.assertTrue("Dynamic" not in str(use.graph))
 
